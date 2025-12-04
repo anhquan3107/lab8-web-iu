@@ -2,9 +2,13 @@ package com.example.customer_api.controller;
 
 import com.example.customer_api.dto.CustomerRequestDTO;
 import com.example.customer_api.dto.CustomerResponseDTO;
+import com.example.customer_api.dto.CustomerUpdateDTO;
+import com.example.customer_api.entity.Customer.CustomerStatus;
 import com.example.customer_api.service.CustomerService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,10 +31,32 @@ public class CustomerRestController {
     
     // GET all customers
     @GetMapping
-    public ResponseEntity<List<CustomerResponseDTO>> getAllCustomers() {
-        List<CustomerResponseDTO> customers = customerService.getAllCustomers();
-        return ResponseEntity.ok(customers);
+    public ResponseEntity<Map<String, Object>> getAllCustomers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+
+        // Build sorting if sortBy provided
+        Sort sort = Sort.unsorted();
+        if (sortBy != null && !sortBy.isEmpty()) {
+            sort = sortDir.equalsIgnoreCase("asc")
+                    ? Sort.by(sortBy).ascending()
+                    : Sort.by(sortBy).descending();
+        }
+
+        Page<CustomerResponseDTO> customerPage =
+                customerService.getAllCustomers(page, size, sort);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("customers", customerPage.getContent());
+        response.put("currentPage", customerPage.getNumber());
+        response.put("totalItems", customerPage.getTotalElements());
+        response.put("totalPages", customerPage.getTotalPages());
+
+        return ResponseEntity.ok(response);
     }
+
     
     // GET customer by ID
     @GetMapping("/{id}")
@@ -74,7 +100,47 @@ public class CustomerRestController {
     // GET customers by status
     @GetMapping("/status/{status}")
     public ResponseEntity<List<CustomerResponseDTO>> getCustomersByStatus(@PathVariable String status) {
-        List<CustomerResponseDTO> customers = customerService.getCustomersByStatus(status);
+        CustomerStatus customerStatus = CustomerStatus.valueOf(status.toUpperCase());
+        List<CustomerResponseDTO> customers = customerService.getCustomersByStatus(customerStatus);
         return ResponseEntity.ok(customers);
     }
+
+    @GetMapping("/advanced-search")
+    public ResponseEntity<List<CustomerResponseDTO>> advancedSearch(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String status) {
+        CustomerStatus customerStatus = null;
+        if (status != null && !status.isEmpty()) {
+            customerStatus = CustomerStatus.valueOf(status.toUpperCase());
+        }   
+        List<CustomerResponseDTO> results = customerService.advancedSearch(name, email, customerStatus);
+        return ResponseEntity.ok(results);
+    }
+
+    @GetMapping("/sorted")
+    public ResponseEntity<List<CustomerResponseDTO>> getAllSorted(
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+
+        Sort sort = sortDir.equalsIgnoreCase("asc") 
+            ? Sort.by(sortBy).ascending()
+            : Sort.by(sortBy).descending();
+
+        List<CustomerResponseDTO> customers = customerService.getAllCustomers(sort);
+        return ResponseEntity.ok(customers);
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<CustomerResponseDTO> partialUpdateCustomer(
+            @PathVariable Long id,
+            @RequestBody CustomerUpdateDTO updateDTO) {
+
+        CustomerResponseDTO updated = customerService.partialUpdateCustomer(id, updateDTO);
+        return ResponseEntity.ok(updated);
+    }
+
+
+    
+    
 }

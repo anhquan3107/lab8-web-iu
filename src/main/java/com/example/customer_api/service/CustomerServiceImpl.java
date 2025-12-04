@@ -2,13 +2,19 @@ package com.example.customer_api.service;
 
 import com.example.customer_api.dto.CustomerRequestDTO;
 import com.example.customer_api.dto.CustomerResponseDTO;
+import com.example.customer_api.dto.CustomerUpdateDTO;
 import com.example.customer_api.entity.Customer;
+import com.example.customer_api.entity.Customer.CustomerStatus;
 import com.example.customer_api.exception.DuplicateResourceException;
 import com.example.customer_api.exception.ResourceNotFoundException;
 import com.example.customer_api.repository.CustomerRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -100,12 +106,80 @@ public class CustomerServiceImpl implements CustomerService {
     }
     
     @Override
-    public List<CustomerResponseDTO> getCustomersByStatus(String status) {
+    public List<CustomerResponseDTO> getCustomersByStatus(CustomerStatus status) {
         return customerRepository.findByStatus(status)
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public List<CustomerResponseDTO> advancedSearch(String name, String email, CustomerStatus status) {
+        return customerRepository.advancedSearch(name, email, status)
+                .stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<CustomerResponseDTO> getAllCustomers(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        return customerRepository.findAll(pageable)
+                .map(this::convertToResponseDTO);
+    }
+
+    @Override
+    public List<CustomerResponseDTO> getAllCustomers(Sort sort) {
+        return customerRepository.findAll(sort)
+                .stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<CustomerResponseDTO> getAllCustomers(int page, int size, Sort sort) {
+
+        Pageable pageable = sort.isUnsorted()
+                ? PageRequest.of(page, size)
+                : PageRequest.of(page, size, sort);
+
+        return customerRepository.findAll(pageable)
+                .map(this::convertToResponseDTO);
+    }
+
+    @Override
+    public CustomerResponseDTO partialUpdateCustomer(Long id, CustomerUpdateDTO updateDTO) {
+
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + id));
+
+        // Only update non-null fields
+        if (updateDTO.getFullName() != null) {
+            customer.setFullName(updateDTO.getFullName());
+        }
+        if (updateDTO.getEmail() != null) {
+            // Check duplicate email
+            if (!customer.getEmail().equals(updateDTO.getEmail())
+                    && customerRepository.existsByEmail(updateDTO.getEmail())) {
+                throw new DuplicateResourceException("Email already exists: " + updateDTO.getEmail());
+            }
+            customer.setEmail(updateDTO.getEmail());
+        }
+        if (updateDTO.getPhone() != null) {
+            customer.setPhone(updateDTO.getPhone());
+        }
+        if (updateDTO.getAddress() != null) {
+            customer.setAddress(updateDTO.getAddress());
+        }
+
+        Customer saved = customerRepository.save(customer);
+        return convertToResponseDTO(saved);
+    }
+
+
+    
+
     
     // Helper Methods for DTO Conversion
     
@@ -131,4 +205,6 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setAddress(dto.getAddress());
         return customer;
     }
+
+    
 }
